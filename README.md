@@ -16,19 +16,19 @@ The **GhostData Deletion-Audit Agent** is an autonomous, evidence-driven auditin
 
 ## 2. System Architecture
 
-The agent operates across five sequential stages:
+The system pairs a deterministic verification engine (`ghost/`) with an autonomous AI investigator (`ghost/agent.py`):
 
 ```mermaid
 flowchart TD
-    A["Deletion Requests (deletion_requests.csv)"] --> B["1. Identity Resolution Engine"]
+    A["Deletion Requests (deletion_requests.csv)"] --> B["1. Identity Resolution (ghost/identity.py)"]
     C["Identity Records (user_identities.csv, user_audit_log.csv)"] --> B
     B --> D["Resolved Identity Graph (UUIDs, Emails, Aliases, Hashes)"]
     
-    D --> E["2. Multi-Modal Evidence Ingestion"]
+    D --> E["2. Multi-Modal Evidence Ingestion (ghost/evidence.py, ghost/activity.py)"]
     F["Evidence Files (dataset/evidence/: SQLite, JSON, Logs, PDFs)"] --> E
     G["System Activity Logs (system_activity.csv)"] --> E
     
-    E --> H["3. Temporal Policy Evaluation Engine"]
+    E --> H["3. Temporal Policy Evaluation Engine (ghost/policy.py, ghost/state.py)"]
     I["Deletion Rules (deletion_rules.csv at audit_at)"] --> H
     
     H --> J{"Evaluation Outcome"}
@@ -36,7 +36,7 @@ flowchart TD
     J -->|"Fully Compliant & Protected"| L["COMPLETE (Verification Only)"]
     J -->|"Remnants / Leaks / Sync Risks"| M["INCOMPLETE (Findings + Remediation + Future Verification)"]
     
-    K --> N["Output Serializer & Sequence Formatter"]
+    K --> N["Planner & Sequence Formatter (ghost/planner.py)"]
     L --> N
     M --> N
     N --> O["output.csv (518 Cases)"]
@@ -44,33 +44,51 @@ flowchart TD
 
 ### Core Architecture Components
 
-1. **Identity Resolution Engine (`src/identity_resolver.py`):**
-   * Correlates primary user IDs, historical emails, secondary phone numbers, device tokens, and hashed identifiers across `user_identities.csv` and historical mutation logs in `user_audit_log.csv`.
-   * Builds an immutable `IdentityGraph` per case, ensuring that legacy aliases or past emails are tracked across secondary databases and backups.
+- **Deterministic Engine (`ghost/`):**
+  - **`ghost/intake.py`**: Ingests requests and manifest structures.
+  - **`ghost/identity.py`**: Resolves historical aliases, email variations, and account hashes across `user_identities.csv` and `user_audit_log.csv`.
+  - **`ghost/evidence.py`**: Multi-format evidence parser (SQLite snapshots, JSON dumps, log files, support attachments/PDFs).
+  - **`ghost/activity.py`**: Sync/import and backup risk discovery in `system_activity.csv`.
+  - **`ghost/policy.py` & `ghost/state.py`**: Enforces `deletion_rules.csv` at `audit_at`, applying account tombstone rules (preserving `user_id` while stripping direct PII: name, email, phone, email_hash).
+  - **`ghost/planner.py`**: Formats and strictly orders steps (`FINDING` $\rightarrow$ `REMEDIATION` $\rightarrow$ `VERIFICATION`).
+  - **`ghost/validate.py`**: In-engine compliance gate verifying steps and state transitions.
 
-2. **Multi-Modal Evidence Parser (`src/evidence_parser.py`):**
-   * Reads the manifest (`evidence_files.csv`) and extracts text, structured rows, and metadata from:
-     * **Relational / SQLite Snapshots:** Primary, regional, reporting, and failover replicas.
-     * **NoSQL / JSON Data Dumps:** Document stores, search index caches, and analytics exports.
-     * **Server & Access Logs:** Chronological event traces and webhook payloads.
-     * **Unstructured Attachments & Documents:** Customer support tickets and PDFs.
-   * Cross-references ongoing data movement and scheduled batch operations via `system_activity.csv`.
+- **AI Layer (`ghost/agent.py`, `ghost/agent_tools.py`):**
+  - Autonomous reasoning agent equipped with read-only inspection tools for ambiguous evidence, unstructured attachments, and cross-system correlation.
 
-3. **Temporal Policy Engine (`src/policy_engine.py`):**
-   * Evaluates records strictly at the temporal boundary: `timestamp <= audit_at`.
-   * Enforces rules from `deletion_rules.csv` determining mandatory treatment: **DELETE**, **REDACT**, **ANONYMIZE**, or **RETAIN**.
-   * **Account Tombstone Rule:** Validates that while a stable `user_id` may remain to maintain foreign-key integrity for legally retained records (e.g., invoices/tax), all direct personal identifiers (**name, email, phone, and email_hash**) are strictly absent or redacted.
+- **Visualizer & Utilities (`viz/`):**
+  - Inspection utilities for auditing case state transitions and evidence graphs.
 
-4. **Risk & Vector Discovery:**
-   * Detects **Active Data Flows:** Ongoing sync/import jobs in `system_activity.csv` that touch user-associated entities post-deletion.
-   * Detects **Restore Risks:** Unrestricted backups capable of restoring purged data into active production stores.
+---
 
-5. **Compliant Step Generator & Serializer (`src/plan_generator.py`):**
-   * Constructs standardized JSON steps strictly partitioned by phase:
-     $$\text{FINDING} \longrightarrow \text{REMEDIATION} \longrightarrow \text{VERIFICATION}$$
-   * Enforces mandatory operation sequence and deterministic tie-breaking (sorted by `system_id` ascending, then `resource_id` ascending).
-   * Validates evidence references: existing findings and current verifications cite valid IDs; proposed remediation and future verifications use `""`.
+## 3. Directory Layout
 
+```
+.
+├── .env.example                  # Environment configuration template
+├── README.md                     # System architecture & operational documentation
+├── log.txt                       # Append-only interaction transcript
+├── validate_submission.py        # Automated submission validation script
+├── main.py                       # Main pipeline entry point
+├── ghost/                        # Core audit engine & AI agent modules
+│   ├── __init__.py
+│   ├── intake.py                 # Request and manifest loading
+│   ├── identity.py               # Historical identity graph resolution
+│   ├── evidence.py               # Multi-modal evidence loader (SQLite, JSON, logs)
+│   ├── activity.py               # Active sync & backup restore risk analysis
+│   ├── policy.py                 # Deletion policy & tombstone evaluator
+│   ├── state.py                  # Temporal state reconstruction at audit_at
+│   ├── planner.py                # Deterministic step sequencing & formatting
+│   ├── validate.py               # Engine-level step & state validation
+│   ├── agent.py                  # AI investigation agent
+│   ├── agent_tools.py            # Inspection tool definitions for LLM
+│   └── vision.py                 # Visual & document evidence parser
+├── evaluation/                   # Evaluation artifacts
+│   ├── evaluation_report.md      # Metrics, custom evaluation test cases, & post-mortem
+│   └── usage_report.md           # Model calls, token accounting, & cost breakdown
+├── tests/                        # Automated unit and integration test suite
+└── output.csv                    # Final generated audit results (518 cases)
+```
 
 ---
 
@@ -131,7 +149,7 @@ OUTPUT_FILE=./output.csv
 To execute the complete audit analysis and generate `output.csv`:
 
 ```bash
-python run_audit.py --requests dataset/deletion_requests.csv --evidence dataset/evidence_files.csv --output output.csv
+python main.py --requests dataset/deletion_requests.csv --evidence dataset/evidence_files.csv --output output.csv
 ```
 
 #### CLI Options
@@ -148,7 +166,7 @@ python run_audit.py --requests dataset/deletion_requests.csv --evidence dataset/
 
 ## 6. Verification & Quality Assurance
 
-Before packaging deliverables, validate the generated `output.csv` against all contest specifications using our validator script:
+Before packaging deliverables, validate the generated `output.csv` against all contest specifications using the validator script:
 
 ```bash
 python validate_submission.py --file output.csv
@@ -171,13 +189,12 @@ The validation suite verifies:
 To build the final submission archive `code.zip`:
 
 ```bash
-# Ensure evaluation reports are populated
 # Package files excluding dataset, virtual environments, caches, and local secrets
-zip -r code.zip src/ evaluation/ README.md run_audit.py validate_submission.py requirements.txt .env.example -x "*.pyc" -x "*__pycache__*" -x "*.venv*"
+zip -r code.zip ghost/ evaluation/ tests/ viz/ README.md main.py validate_submission.py requirements.txt .env.example -x "*.pyc" -x "*__pycache__*" -x "*.venv*"
 ```
 
 Verify that `code.zip` contains:
-* Runnable source code (`src/`, `run_audit.py`, `validate_submission.py`)
+* Runnable source code (`ghost/`, `main.py`, `validate_submission.py`)
 * Comprehensive `README.md` and `.env.example`
 * Complete `evaluation/evaluation_report.md` (with metrics and 3 custom test cases)
 * Complete `evaluation/usage_report.md` (with token usage and cost analysis)
