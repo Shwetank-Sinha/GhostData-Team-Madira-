@@ -111,7 +111,7 @@ OUTPUT_FILE=./output.csv
 
 ---
 
-## 5. Execution Instructions
+## 4. Execution Instructions
 
 ### Run the Full Audit Pipeline (All 518 Cases)
 
@@ -133,7 +133,7 @@ python main.py --requests dataset/deletion_requests.csv --evidence dataset/evide
 
 ---
 
-## 6. Verification & Quality Assurance
+## 5. Verification & Quality Assurance
 
 Before packaging deliverables, validate the generated `output.csv` against all contest specifications using the validator script:
 
@@ -153,7 +153,7 @@ The validation suite verifies:
 
 ---
 
-## 7. Packaging & Submission
+## 6. Packaging & Submission
 
 To build the final submission archive `code.zip`:
 
