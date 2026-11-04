@@ -61,37 +61,6 @@ flowchart TD
 
 ---
 
-## 3. Directory Layout
-
-```
-.
-├── .env.example                  # Environment configuration template
-├── README.md                     # System architecture & operational documentation
-├── log.txt                       # Append-only interaction transcript
-├── validate_submission.py        # Automated submission validation script
-├── main.py                       # Main pipeline entry point
-├── ghost/                        # Core audit engine & AI agent modules
-│   ├── __init__.py
-│   ├── intake.py                 # Request and manifest loading
-│   ├── identity.py               # Historical identity graph resolution
-│   ├── evidence.py               # Multi-modal evidence loader (SQLite, JSON, logs)
-│   ├── activity.py               # Active sync & backup restore risk analysis
-│   ├── policy.py                 # Deletion policy & tombstone evaluator
-│   ├── state.py                  # Temporal state reconstruction at audit_at
-│   ├── planner.py                # Deterministic step sequencing & formatting
-│   ├── validate.py               # Engine-level step & state validation
-│   ├── agent.py                  # AI investigation agent
-│   ├── agent_tools.py            # Inspection tool definitions for LLM
-│   └── vision.py                 # Visual & document evidence parser
-├── evaluation/                   # Evaluation artifacts
-│   ├── evaluation_report.md      # Metrics, custom evaluation test cases, & post-mortem
-│   └── usage_report.md           # Model calls, token accounting, & cost breakdown
-├── tests/                        # Automated unit and integration test suite
-└── output.csv                    # Final generated audit results (518 cases)
-```
-
----
-
 ## 4. Setup & Installation
 
 ### Prerequisites
