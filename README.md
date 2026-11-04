@@ -12,3 +12,4 @@ For each deletion request, decide whether the person's data is really gone, and 
 - **AI Layer** (`ghost/agent.py`, `ghost/agent_tools.py`): OpenAI model + 8 read-only tools investigating independently
 - **Gate**: Validates and reconciles model plan vs engine canonical plan
 - **Viz** (`viz/`): Visualizer and inspection utilities
+
