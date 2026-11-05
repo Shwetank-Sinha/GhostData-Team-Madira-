@@ -26,6 +26,18 @@ TEMPLATE = (
 _DATE_HINT = "a date and time like 2026-07-16T08:00:00Z"
 
 
+def template_for(requests) -> str:
+    """A working example file: real customers from the data under new case ids, so it can be run as it is."""
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow(COLUMNS)
+    stamp = lambda moment: moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+    for number, r in enumerate(list(requests)[:4], start=1):
+        writer.writerow([f"example_{number:03d}", r.email, stamp(r.requested_at), r.reported_status,
+                         stamp(r.reported_at), stamp(r.audit_at), r.request_text])
+    return out.getvalue()
+
+
 def _friendly(column: str, error: Exception) -> str:
     """Turn a technical error into a sentence a person can act on."""
     text = str(error)

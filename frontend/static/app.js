@@ -21,7 +21,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const bytes = (n) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB` : `${(n / 1048576).toFixed(1)} MB`;
 
 async function api(path, { method = 'GET', body, headers = {} } = {}) {
-  const res = await fetch(path, { method, body, headers: { 'X-Requested-With': 'ghost-audit-ui', ...headers } });
+  let res;
+  try {
+    res = await fetch(path, { method, body, headers: { 'X-Requested-With': 'ghost-audit-ui', ...headers } });
+  } catch {                                       // the browser could not reach the server at all
+    const err = new Error('Can’t reach the website’s server. It may have been stopped. Start it again with “Start Website.bat”, then reload this page.');
+    err.offline = true; throw err;
+  }
   let data = null;
   try { data = await res.json(); } catch { /* not JSON */ }
   if (!res.ok) { const err = new Error(data?.error || `Something went wrong (${res.status}).`); err.data = data; err.status = res.status; throw err; }
@@ -214,11 +220,13 @@ $('#readingsSwitch').addEventListener('click', (e) => {
 });
 function renderSetup() {
   const ready = !!state.status?.ready, busy = state.running;
-  const haveBatch = state.mode === 'builtin' || (state.batch && state.batch.rows > 0);
+  const usable = state.batch ? (state.batch.matched ?? state.batch.rows) : 0;      // requests that belong to a known customer
+  const haveBatch = state.mode === 'builtin' || usable > 0;
   const btn = $('#runBtn'); btn.disabled = !(ready && haveBatch) || busy;
-  const rows = state.mode === 'builtin' ? state.status?.dataset?.requests : state.batch?.rows;
+  const rows = state.mode === 'builtin' ? state.status?.dataset?.requests : usable;
   $('#runHint').textContent = !state.status ? 'Connecting…' : state.status.error ? 'The evidence could not be loaded.'
     : !ready ? 'Getting the evidence ready (the first time takes a moment)…'
+    : state.mode === 'upload' && state.batch && usable === 0 ? 'None of the emails in this file are in the customer list.'
     : !haveBatch ? 'Choose a CSV file to continue.' : `Ready to check ${fmt(rows || 0)} request${rows === 1 ? '' : 's'}.`;
 }
 
@@ -257,17 +265,22 @@ function showUploaded(out) {
   drop.querySelector('strong').textContent = 'Drop a CSV file here';
   const b = out.batch, el = $('#uploadDone'); el.hidden = false;
   const probs = out.problems || [];
+  const matched = b.matched ?? b.rows, unmatched = out.unmatched || [];
+  const nothing = matched === 0;
   el.innerHTML = `
     <div class="filecard">
       <div class="filecard-top">
         <div class="doc">${icon('doc', 22)}</div>
-        <div class="grow"><h3>${esc(b.name)}</h3><div class="meta num">${fmt(b.total_rows)} rows read</div></div>
+        <div class="grow"><h3>${esc(b.name)}</h3><div class="meta num">${fmt(b.total_rows)} row${b.total_rows === 1 ? '' : 's'} read</div></div>
         <button type="button" class="icon-btn" id="removeBatch" aria-label="Remove this file" title="Remove">${icon('x', 18)}</button>
       </div>
       <div class="chips">
-        <span class="chip good">${fmt(b.rows)} ready to check</span>
+        <span class="chip ${nothing ? 'warn' : 'good'}">${fmt(matched)} ready to check</span>
+        ${b.unmatched_count ? `<span class="chip warn">${fmt(b.unmatched_count)} not in the customer list (will be skipped)</span>` : ''}
         ${out.problem_count ? `<span class="chip warn">${fmt(out.problem_count)} with problems (will be skipped)</span>` : ''}
       </div>
+      ${nothing ? `<div class="problems"><div><b>There is nothing to check in this file.</b> The engine can only check customers that exist in its data, and none of these emails do. Use emails from the customer list, or <a href="/api/template.csv" download>download the template</a> for a working example.</div></div>` : ''}
+      ${unmatched.length ? `<div class="problems">${unmatched.slice(0, 3).map((u) => `<div>${esc(u.case_id)} · ${esc(u.email)}: ${esc(u.reason)}</div>`).join('')}${b.unmatched_count > 3 ? `<div>…and ${b.unmatched_count - 3} more</div>` : ''}</div>` : ''}
       ${probs.length ? `<div class="problems">${probs.slice(0, 5).map((p) => `<div>Line ${p.line}${p.case_id ? ` · ${esc(p.case_id)}` : ''}: ${esc(p.message)}</div>`).join('')}${out.problem_count > 5 ? `<div>…and ${out.problem_count - 5} more</div>` : ''}</div>` : ''}
       <div class="table-wrap"><table class="mini-table"><thead><tr><th>Case</th><th>Email</th><th>Said</th><th>Request</th></tr></thead><tbody>
         ${out.preview.map((r) => `<tr><td>${esc(r.case_id)}</td><td>${esc(r.email)}</td><td>${esc(REPORTED[r.reported_status] || r.reported_status)}</td><td>${esc(r.request_text)}</td></tr>`).join('')}

@@ -18,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from .batches import MAX_BYTES, TEMPLATE, parse_batch
+from .batches import MAX_BYTES, TEMPLATE, parse_batch, template_for
 from .jobs import BUILTIN_ID, SUBMISSION_DIR, WEB_DIR, AppState, build_zip
 
 STATIC = Path(__file__).parent / "static"
@@ -143,7 +143,8 @@ class Handler(BaseHTTPRequestHandler):
                 }
             return self._json(payload)
         if route == "template.csv":
-            return self._send(200, TEMPLATE.encode("utf-8"), "text/csv; charset=utf-8",
+            text = template_for(state.dataset.requests) if state.dataset else TEMPLATE
+            return self._send(200, text.encode("utf-8"), "text/csv; charset=utf-8",
                               {"Content-Disposition": 'attachment; filename="deletion_requests_template.csv"'})
         if route == "batches":
             with state.lock:
@@ -209,7 +210,7 @@ class Handler(BaseHTTPRequestHandler):
                                "problems": parsed["problems"][:50]}, 400)
         batch = self.state.add_batch(name, parsed)
         self._json({"batch": batch.public(), "preview": parsed["preview"], "problems": parsed["problems"][:50],
-                    "problem_count": len(parsed["problems"])}, 201)
+                    "problem_count": len(parsed["problems"]), "unmatched": batch.unmatched[:5]}, 201)
 
     def _start_job(self) -> None:
         raw = self._body(10_000)

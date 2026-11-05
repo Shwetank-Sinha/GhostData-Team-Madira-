@@ -61,10 +61,13 @@ class Batch:
     problems: list
     total_rows: int
     created: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    matched: int | None = None                  # how many requests belong to a customer in the data (None: not checked yet)
+    unmatched: list = field(default_factory=list)   # the ones that do not, each with the reason
 
     def public(self) -> dict:
         return {"id": self.id, "name": self.name, "rows": len(self.requests), "total_rows": self.total_rows,
-                "problems": len(self.problems), "created": self.created}
+                "problems": len(self.problems), "created": self.created, "matched": self.matched,
+                "unmatched_count": len(self.unmatched)}
 
 
 @dataclass
@@ -149,8 +152,30 @@ class AppState:
                     continue
 
     # ------------------------------------------------------------------ batches
+    def split_requests(self, requests: list, builtin: bool) -> tuple[list, list]:
+        """Requests we can check, and requests we must set aside (with the reason). Nothing is guessed."""
+        dataset = self.dataset
+        resolver = IdentityResolver(dataset.identities, dataset.audit_log)
+        practice_ids = {r.case_id for r in dataset.sample_requests}
+        kept, skipped = [], []
+        for request in requests:
+            subject = resolver.resolve(request)
+            if not builtin and request.case_id in practice_ids:
+                skipped.append({"case_id": request.case_id, "email": request.email,
+                                "reason": "This case id is already used by a built-in practice case. Rename it."})
+            elif not subject.resolved:
+                reason = next((text for key, text in SKIP_REASONS if key in subject.reason),
+                              "We could not tell which customer this is.")
+                skipped.append({"case_id": request.case_id, "email": request.email, "reason": reason})
+            else:
+                kept.append(request)
+        return kept, skipped
+
     def add_batch(self, name: str, parsed: dict) -> Batch:
         batch = Batch(uuid.uuid4().hex[:10], name, parsed["requests"], parsed["problems"], parsed["total_rows"])
+        if self.ready:                                   # tell the person right away which requests can be checked
+            kept, skipped = self.split_requests(batch.requests, builtin=False)
+            batch.matched, batch.unmatched = len(kept), skipped
         with self.lock:
             self.batches[batch.id] = batch
         return batch
@@ -191,22 +216,7 @@ class AppState:
 
             # who is each person? Requests we cannot match to a customer are set aside, not guessed.
             self._set(job, 1, 0.0)
-            resolver = IdentityResolver(dataset.identities, dataset.audit_log)
-            practice_ids = {r.case_id for r in dataset.sample_requests}
-            kept, skipped = [], []
-            for position, request in enumerate(batch.requests, start=1):
-                subject = resolver.resolve(request)
-                if batch.id != BUILTIN_ID and request.case_id in practice_ids:
-                    skipped.append({"case_id": request.case_id, "email": request.email,
-                                    "reason": "This case id is already used by a built-in practice case. Rename it."})
-                elif not subject.resolved:
-                    reason = next((text for key, text in SKIP_REASONS if key in subject.reason),
-                                  "We could not tell which customer this is.")
-                    skipped.append({"case_id": request.case_id, "email": request.email, "reason": reason})
-                else:
-                    kept.append(request)
-                if position % 25 == 0:
-                    self._set(job, 1, position / max(1, len(batch.requests)))
+            kept, skipped = self.split_requests(batch.requests, builtin=batch.id == BUILTIN_ID)
             self._set(job, 1, 1.0)
             if not kept:
                 job.result = {"batch": {"name": batch.name, "rows": len(batch.requests), "ran": 0},
