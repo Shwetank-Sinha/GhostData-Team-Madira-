@@ -153,7 +153,7 @@ def _render(dataset: Dataset, samples: dict, differing: list, checks: dict) -> s
     return "\n".join(lines)
 
 
-def write_report(dataset: Dataset, pipeline: Pipeline) -> tuple[dict, dict, Path]:
+def write_report(dataset: Dataset, pipeline: Pipeline, directory: Path | None = None) -> tuple[dict, dict, Path]:
     """Compute the metrics and write them to a NEW timestamped report file.
 
     Each call creates evaluation_report_<date>_<time>.md next to the earlier ones. An existing file is
@@ -164,12 +164,13 @@ def write_report(dataset: Dataset, pipeline: Pipeline) -> tuple[dict, dict, Path
     checks = _check_requests(dataset, pipeline)
     text = _render(dataset, samples, differing, checks)
 
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    target_dir = directory or REPORT_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     attempt = 0
     while True:
         suffix = f"_{attempt}" if attempt else ""
-        path = REPORT_DIR / f"evaluation_report_{stamp}{suffix}.md"
+        path = target_dir / f"evaluation_report_{stamp}{suffix}.md"
         try:
             with path.open("x", encoding="utf-8") as handle:     # "x" fails instead of overwriting
                 handle.write(text)

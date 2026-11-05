@@ -1,4 +1,4 @@
-﻿"""Write a new timestamped evaluation report on its own, without producing output.csv.
+"""Write a new timestamped evaluation report on its own, without producing output.csv.
 
     python evaluation_test/run_evaluation.py
 

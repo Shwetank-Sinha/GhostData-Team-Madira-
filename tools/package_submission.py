@@ -4,7 +4,7 @@
 
 Run `python code/main.py run` first, so output.csv and the two reports belong to the same run.
 
-code.zip holds an explicit list of files only: README.md, code/, evaluation_test/run_evaluation.py and an
+code.zip holds an explicit list of files only: README.md, code/, frontend/, Start Website.bat, evaluation_test/run_evaluation.py and an
 evaluation/ folder with evaluation_report.md and usage_report.md (the newest of each). It never holds the
 dataset, caches, run output, archives or anything that looks like a secret; the script stops if it finds one.
 """
@@ -52,9 +52,11 @@ def check_output(path: Path) -> None:
 def collect() -> list[tuple[str, Path]]:
     files: list[tuple[str, Path]] = [("README.md", ROOT / "README.md"),
                                      ("evaluation_test/run_evaluation.py", ROOT / "evaluation_test" / "run_evaluation.py")]
-    for path in sorted((ROOT / "code").rglob("*")):
-        if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc":
-            files.append((path.relative_to(ROOT).as_posix(), path))
+    for folder in ("code", "frontend"):
+        for path in sorted((ROOT / folder).rglob("*")):
+            if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc":
+                files.append((path.relative_to(ROOT).as_posix(), path))
+    files.append(("Start Website.bat", ROOT / "Start Website.bat"))
     files.append(("evaluation/evaluation_report.md", newest("evaluation_report_*.md")))
     files.append(("evaluation/usage_report.md", newest("usage_report_*.md")))
     return files

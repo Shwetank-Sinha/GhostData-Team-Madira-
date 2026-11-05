@@ -50,6 +50,24 @@ The zip holds only the README, `code/`, `evaluation_test/run_evaluation.py` and 
 
 A run also writes `runs/audit.jsonl`, one line per case with the resources found and why the case came out the way it did.
 
+## Website
+
+```bash
+python code/main.py serve        # or double-click "Start Website.bat"
+```
+
+The website lives in the `frontend/` folder. It opens a page at `http://127.0.0.1:8000` (it only answers on your own computer; nothing is sent anywhere). From the page you can:
+
+* run the check on the built-in 518 requests, or **upload your own CSV** of requests (same columns as `dataset/deletion_requests.csv`; there is a template to download);
+* watch the progress live, then see the results on the page: how many requests are really done, how many still have data left, which claims did not hold up, what was found and where, the accuracy on the practice cases, and anything the engine could not settle;
+* open any request to see what was found, what to fix (in order) and how to check it;
+* **download** `output.csv`, the evaluation report, the usage report, a list of skipped requests, or everything in one zip;
+* switch between light and dark mode (it follows your system by default and remembers your choice).
+
+Uploaded requests must belong to customers who are in `dataset/user_identities.csv`; any request that cannot be matched to a customer is set aside, with the reason, instead of guessed. Results of each run are kept under `runs/web/` and listed under "Recent runs" on the page. These runs never overwrite the official `output.csv` or the reports in `evaluation_test/`.
+
+Add `?still=1` to the address to turn all animation off. The page also respects the system "reduce motion" and "reduce transparency" settings.
+
 ## Output format
 
 `output.csv` has the columns `case_id,deletion_status,steps_json`, one row per request in `dataset/deletion_requests.csv`, sorted by case number (`case_9` before `case_10`).
@@ -110,8 +128,15 @@ code/
     verify.py scoring.py pipeline.py  row checks, sample scoring, orchestration
     evaluation.py                   scores the samples, checks all requests, writes the report
     readings.py                     loads and checks the stored screenshot readings
+    runner.py                       runs a set of requests and checks every row (used by the command line and the website)
     llm_common.py gemini.py openai_client.py   optional model clients (cache, usage ledger)
   readings/screenshot_readings.json   states read from screenshots, with quotes
+frontend/                 the website
+  server.py               small local server (answers only on this computer)
+  jobs.py                 runs the engine for the page, tracks progress, saves results
+  batches.py              checks an uploaded CSV and explains problems in plain words
+  static/                 the page itself: index.html, styles.css, app.js
+Start Website.bat         double-click to open the website
 evaluation_test/
   run_evaluation.py       writes only the report (main.py run does it too)
   evaluation_report_<date>_<time>.md   evaluation report of a run

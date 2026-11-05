@@ -6,6 +6,7 @@ From the project root:
     python code/main.py run --no-report       write output.csv only
     python code/main.py identities            check that every request email resolves to a user
     python code/main.py index                 index all evidence files and print a summary
+    python code/main.py serve                 open the website (run checks, upload batches, download results)
 """
 from __future__ import annotations
 
@@ -18,45 +19,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from deletion_audit.common import REPO_ROOT, case_sort_key  # noqa: E402
+from deletion_audit.common import REPO_ROOT  # noqa: E402
 from deletion_audit.data import DatasetError, load_dataset  # noqa: E402
 from deletion_audit.evaluation import write_report  # noqa: E402
 from deletion_audit.evidence import EvidenceIndexError, build_index  # noqa: E402
 from deletion_audit.identity import IdentityResolver  # noqa: E402
-from deletion_audit.pipeline import NO_RESOURCE_NOTE, Pipeline  # noqa: E402
-from deletion_audit.planner import _entry_ops  # noqa: E402
+from deletion_audit.pipeline import Pipeline  # noqa: E402
 from deletion_audit.readings import ReadingsError  # noqa: E402
+from deletion_audit.runner import in_case_order, run_requests  # noqa: E402
 from deletion_audit.usage import write_usage_report  # noqa: E402
-from deletion_audit.verify import serialize_steps, verify_row  # noqa: E402
 
 RUNS_DIR = REPO_ROOT / "runs"
-
-
-def _in_case_order(requests):
-    return sorted(requests, key=lambda r: case_sort_key(r.case_id))
-
-
-def _citable_times(dataset) -> dict:
-    """When each citable id (file, activity, audit record) was captured or happened."""
-    times = {f.file_id: f.captured_at for f in dataset.evidence_files}
-    times.update({a.activity_id: a.event_time for a in dataset.activity})
-    times.update({e.audit_id: e.event_time for e in dataset.audit_log})
-    return times
-
-
-def _file_contents(index) -> tuple[dict, dict]:
-    """Per file: the resource ids it names, and the systems it covers."""
-    names: dict[str, set[str]] = {}
-    for rec in index.records:
-        bucket = names.setdefault(rec.file_id, set())
-        bucket.update(rec.mentions)
-        if rec.resource_id:
-            bucket.add(rec.resource_id)
-    systems: dict[str, set[str]] = {}
-    for scope in index.scopes:
-        if scope.system:
-            systems.setdefault(scope.file_id, set()).add(scope.system)
-    return names, systems
 
 
 def command_identities(_args: argparse.Namespace) -> int:
@@ -69,7 +42,7 @@ def command_identities(_args: argparse.Namespace) -> int:
     RUNS_DIR.mkdir(exist_ok=True)
     unresolved_total = 0
     for label, requests in (("requests", dataset.requests), ("samples", dataset.sample_requests)):
-        subjects = [resolver.resolve(r) for r in _in_case_order(requests)]
+        subjects = [resolver.resolve(r) for r in in_case_order(requests)]
         tally = Counter((s.resolution, s.match_kind) for s in subjects)
         unresolved = [s.case_id for s in subjects if not s.resolved]
         unresolved_total += len(unresolved)
@@ -122,39 +95,9 @@ def command_run(args: argparse.Namespace) -> int:
         print(exc, file=sys.stderr)
         return 2
 
-    times = _citable_times(dataset)
-    names, systems = _file_contents(pipeline.index)
-    rows: list[tuple[str, str, str]] = []
-    problems: list[str] = []
-    audit_trail: list[dict] = []
-    unidentified: list[str] = []
-    left_out: list[tuple[str, str, str]] = []
-
-    for request in _in_case_order(dataset.requests):
-        answer = pipeline.answer(request)
-        ledger = answer.ledger
-        is_unidentified = answer.status == "COMPLETE" and not answer.steps and answer.note == NO_RESOURCE_NOTE
-        if is_unidentified:
-            unidentified.append(request.case_id)
-        problems += verify_row(request.case_id, answer.status, answer.steps, request.audit_at, times,
-                               allow_unidentified=is_unidentified, evidence_names=names, evidence_systems=systems)
-        rows.append((request.case_id, answer.status, serialize_steps(answer.steps)))
-
-        entries = ledger.entries if ledger else ()
-        unplanned = [e for e in entries if _entry_ops(e) is None]
-        audit_trail.append({
-            "case_id": request.case_id, "status": answer.status, "note": answer.note,
-            "user_id": ledger.subject.user_id if ledger else None,
-            "entries": [{"resource_id": e.resource_id, "system_id": e.system_id, "state": e.state,
-                         "evidence_id": e.evidence_id, "inferred": e.inferred} for e in entries],
-            "workflow_account": pipeline.workflow.account.get(request.case_id),
-            "dropped": [list(d) for d in (ledger.dropped if ledger else ())],
-            "unplanned": [e.resource_id for e in unplanned],
-        })
-        if ledger:
-            left_out += [(request.case_id, rid, why) for rid, why in ledger.dropped]
-            left_out += [(request.case_id, e.resource_id, f"{e.action}/{e.state} has no allowed operation")
-                         for e in unplanned]
+    outcome = run_requests(dataset, pipeline, list(dataset.requests))
+    rows, problems, audit_trail = outcome.rows, outcome.problems, outcome.audit_trail
+    unidentified, left_out = outcome.unidentified, outcome.left_out
 
     RUNS_DIR.mkdir(exist_ok=True)
     (RUNS_DIR / "audit.jsonl").write_text(
@@ -194,6 +137,12 @@ def command_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_serve(args: argparse.Namespace) -> int:
+    sys.path.insert(0, str(REPO_ROOT))      # the website lives in frontend/, next to code/
+    from frontend.server import serve       # imported here so the other commands never need the website code
+    return serve(port=args.port, open_browser=not args.no_browser)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="main.py", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -204,8 +153,12 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--output", help="write here instead of ./output.csv")
     run.add_argument("--no-report", action="store_true", help="skip writing the evaluation report")
     run.add_argument("--no-readings", action="store_true", help="ignore the stored screenshot readings")
+    serve = commands.add_parser("serve", help="open the website (run checks, upload batches, download results)")
+    serve.add_argument("--port", type=int, default=8000, help="port to listen on (default 8000)")
+    serve.add_argument("--no-browser", action="store_true", help="do not open the browser automatically")
     args = parser.parse_args(argv)
-    return {"identities": command_identities, "index": command_index, "run": command_run}[args.command](args)
+    return {"identities": command_identities, "index": command_index, "run": command_run,
+            "serve": command_serve}[args.command](args)
 
 
 if __name__ == "__main__":

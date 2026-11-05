@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f5f5f7">
+<title>Ghost Data Audit</title>
+<script>
+  /* Pick the theme before the first paint so the page never flashes the wrong colours. */
+  (function () {
+    var q = new URLSearchParams(location.search).get('theme');
+    var saved = null; try { saved = localStorage.getItem('ghost-theme'); } catch (e) {}
+    var theme = q || saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.dataset.theme = theme === 'dark' ? 'dark' : 'light';
+  })();
+</script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230071e3'/%3E%3Cpath d='M16 6.5 9 9.3v6.2c0 4.5 3 8 7 9.6 4-1.6 7-5.100 7-9.600V9.300z' fill='none' stroke='white' stroke-width='2' stroke-linejoin='round'/%3E%3Cpath d='m12.600 15.800 2.400 2.400 4.600-5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15.5V4.8M7.8 8.8 12 4.6l4.2 4.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 14.5v3a2.5 2.5 0 0 0 2.5 2.5h10a2.5 2.5 0 0 0 2.5-2.5v-3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path d="M7 3.5h7l4.5 4.5v11a1.5 1.5 0 0 1-1.5 1.5H7A1.5 1.5 0 0 1 5.5 19V5A1.5 1.5 0 0 1 7 3.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3.8V8h4.2M8.5 12.5h7M8.5 16h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4.5v10.7M7.8 11.2l4.2 4.2 4.2-4.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 15.5v2a2.5 2.5 0 0 0 2.5 2.5h10a2.5 2.5 0 0 0 2.5-2.5v-2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.3" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="m16 16 4 4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.2 5 6v5.6c0 4.2 2.8 7.6 7 9.2 4.2-1.6 7-5 7-9.2V6l-7-2.8z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><path d="m8.8 12.2 2.3 2.3 4.2-4.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.6v12.8a.8.8 0 0 0 1.2.7l10-6.4a.8.8 0 0 0 0-1.4l-10-6.4A.8.8 0 0 0 8 5.6z" fill="currentColor"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4.2h-4.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="m6.5 6.5 11 11m0-11-11 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-zip" viewBox="0 0 24 24"><path d="M7 3.5h7l4.5 4.5v11a1.5 1.5 0 0 1-1.5 1.5H7A1.5 1.5 0 0 1 5.5 19V5A1.5 1.5 0 0 1 7 3.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M11 6v1.5M11 9v1.5M11 12v1.5M10 15.2h2v2.3h-2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </defs>
+</svg>
+
+<nav class="nav" aria-label="Main">
+  <div class="nav-inner">
+    <div class="brand">
+      <div class="brand-mark"><svg width="17" height="17" aria-hidden="true"><use href="#i-shield"/></svg></div>
+      <span>Ghost Data Audit</span>
+    </div>
+    <div class="nav-right">
+      <span class="pill warm" id="enginePill" role="status" aria-live="polite"><span class="dot"></span><span id="enginePillText">Getting ready</span></span>
+      <button class="icon-btn" id="themeBtn" type="button" aria-label="Switch between light and dark mode" title="Light / dark">
+        <span class="theme-icon sun"><svg width="19" height="19" aria-hidden="true"><use href="#i-sun"/></svg></span>
+        <span class="theme-icon moon"><svg width="19" height="19" aria-hidden="true"><use href="#i-moon"/></svg></span>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<main>
+  <header class="hero">
+    <p class="eyebrow rise" style="--i:0">Deletion audit</p>
+    <h1 class="rise" style="--i:1">Is the data <em>really</em> gone?</h1>
+    <p class="lede rise" style="--i:2">Check every deletion request against the real evidence, see what is still left behind, and download the results.</p>
+  </header>
+
+  <div id="banner"></div>
+
+  <section class="card rise" style="--i:3" id="runCard" aria-labelledby="runTitle">
+    <!-- set-up view -->
+    <div id="setup">
+      <h2 class="card-title" id="runTitle">Run a check</h2>
+      <p class="card-sub">Pick the requests to check, then press Run. It takes a few seconds.</p>
+
+      <div class="step"><b>1</b> Choose the requests</div>
+      <div class="segmented" role="tablist" aria-label="Where the requests come from" id="modeSeg">
+        <span class="seg-thumb" id="segThumb" aria-hidden="true"></span>
+        <button type="button" role="tab" id="tab-builtin" data-mode="builtin" aria-selected="true">Built-in batch</button>
+        <button type="button" role="tab" id="tab-upload" data-mode="upload" aria-selected="false">Upload a CSV</button>
+      </div>
+
+      <div id="panelBuiltin" class="panel" role="tabpanel" aria-labelledby="tab-builtin">
+        <div class="facts">
+          <div class="fact"><b class="num" id="factRequests">–</b><span>deletion requests</span></div>
+          <div class="fact"><b class="num" id="factEvidence">–</b><span>evidence files</span></div>
+          <div class="fact"><b class="num" id="factPractice">–</b><span>practice cases with known answers</span></div>
+        </div>
+      </div>
+
+      <div id="panelUpload" class="panel" role="tabpanel" aria-labelledby="tab-upload" hidden>
+        <div id="uploadEmpty">
+          <input type="file" id="fileInput" accept=".csv,text/csv" hidden>
+          <button type="button" class="drop" id="drop" aria-label="Choose a CSV file or drop it here">
+            <span class="drop-icon"><svg width="26" height="26" aria-hidden="true"><use href="#i-upload"/></svg></span>
+            <strong>Drop a CSV file here</strong>
+            <span>or <span class="linkish">choose a file</span> from your computer</span>
+          </button>
+          <p class="hint" style="margin-top:12px">Needs the same columns as the built-in batch. <a href="/api/template.csv" class="linkish" download>Download a template</a></p>
+        </div>
+        <div id="uploadDone" hidden></div>
+      </div>
+
+      <div class="step"><b>2</b> Options</div>
+      <div class="row-opt">
+        <div>
+          <h4 id="readingsLabel">Use the screenshot readings</h4>
+          <p id="readingsHelp">A few statuses were read from screenshots. Turn this off to see what they change.</p>
+        </div>
+        <button type="button" class="switch" id="readingsSwitch" role="switch" aria-checked="true" aria-labelledby="readingsLabel"></button>
+      </div>
+
+      <div class="run-row">
+        <button type="button" class="btn" id="runBtn" disabled><svg width="18" height="18" aria-hidden="true"><use href="#i-play"/></svg><span id="runBtnText">Run check</span></button>
+        <span class="hint" id="runHint">Getting the evidence ready…</span>
+      </div>
+    </div>
+
+    <!-- running view -->
+    <div id="running" class="running" hidden aria-live="polite">
+      <div class="run-top">
+        <div class="ring-wrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="ringWrap">
+          <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-bg" cx="50" cy="50" r="44"/><circle class="ring-fg" id="ringFg" cx="50" cy="50" r="44"/></svg>
+          <div class="ring-num num" id="ringNum">0%</div>
+        </div>
+        <div>
+          <h2 class="run-title" id="runStage">Starting…</h2>
+          <p class="run-sub" id="runSub">Checking <span id="runBatchName">the requests</span></p>
+          <p class="run-msg" id="runMsg"></p>
+        </div>
+      </div>
+      <div class="bar" aria-hidden="true"><i id="barFill"></i></div>
+      <ol class="stages" id="stageList"></ol>
+    </div>
+  </section>
+
+  <!-- results are drawn here after a run -->
+  <section id="results" hidden aria-live="polite"></section>
+
+  <section id="recentWrap" hidden>
+    <div class="section-head"><div><h2>Recent runs</h2><p>Open an earlier run to see its results again.</p></div></div>
+    <div class="recent" id="recentList"></div>
+  </section>
+
+  <p class="footer" style="margin-top:48px">Everything runs on this computer. Your files are never sent anywhere.</p>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/static/app.js" defer></script>
+</body>
+</html>
