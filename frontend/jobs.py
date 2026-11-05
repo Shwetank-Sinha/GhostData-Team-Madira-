@@ -17,12 +17,13 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
+from deletion_audit.classifier import baseline_authorizes_deletion
 from deletion_audit.common import REPO_ROOT, case_sort_key
 from deletion_audit.data import load_dataset
 from deletion_audit.evaluation import write_report
 from deletion_audit.evidence import build_index
 from deletion_audit.identity import IdentityResolver
-from deletion_audit.pipeline import Pipeline
+from deletion_audit.pipeline import Answer, Pipeline
 from deletion_audit.readings import Readings
 from deletion_audit.runner import run_requests
 from deletion_audit.usage import write_usage_report
@@ -152,30 +153,38 @@ class AppState:
                     continue
 
     # ------------------------------------------------------------------ batches
-    def split_requests(self, requests: list, builtin: bool) -> tuple[list, list]:
-        """Requests we can check, and requests we must set aside (with the reason). Nothing is guessed."""
+    def split_requests(self, requests: list, builtin: bool) -> tuple[list, list, list]:
+        """Sort requests into: (checked by the engine, answered "not a deletion request", set aside with a reason).
+
+        A request that is not a deletion request needs no customer, so it is answered whoever sent it. A deletion
+        request needs a customer that exists in the data; without one it is set aside, never guessed.
+        """
         dataset = self.dataset
         resolver = IdentityResolver(dataset.identities, dataset.audit_log)
         practice_ids = {r.case_id for r in dataset.sample_requests}
-        kept, skipped = [], []
+        kept, not_deletion, skipped = [], [], []
         for request in requests:
             subject = resolver.resolve(request)
             if not builtin and request.case_id in practice_ids:
                 skipped.append({"case_id": request.case_id, "email": request.email,
                                 "reason": "This case id is already used by a built-in practice case. Rename it."})
-            elif not subject.resolved:
-                reason = next((text for key, text in SKIP_REASONS if key in subject.reason),
-                              "We could not tell which customer this is.")
-                skipped.append({"case_id": request.case_id, "email": request.email, "reason": reason})
-            else:
+            elif subject.resolved:
                 kept.append(request)
-        return kept, skipped
+            else:
+                authorizes, why = baseline_authorizes_deletion(request.request_text)
+                if not authorizes:
+                    not_deletion.append((request, why))
+                else:
+                    reason = next((text for key, text in SKIP_REASONS if key in subject.reason),
+                                  "We could not tell which customer this is.")
+                    skipped.append({"case_id": request.case_id, "email": request.email, "reason": reason})
+        return kept, not_deletion, skipped
 
     def add_batch(self, name: str, parsed: dict) -> Batch:
         batch = Batch(uuid.uuid4().hex[:10], name, parsed["requests"], parsed["problems"], parsed["total_rows"])
         if self.ready:                                   # tell the person right away which requests can be checked
-            kept, skipped = self.split_requests(batch.requests, builtin=False)
-            batch.matched, batch.unmatched = len(kept), skipped
+            kept, not_deletion, skipped = self.split_requests(batch.requests, builtin=False)
+            batch.matched, batch.unmatched = len(kept) + len(not_deletion), skipped
         with self.lock:
             self.batches[batch.id] = batch
         return batch
@@ -216,26 +225,32 @@ class AppState:
 
             # who is each person? Requests we cannot match to a customer are set aside, not guessed.
             self._set(job, 1, 0.0)
-            kept, skipped = self.split_requests(batch.requests, builtin=batch.id == BUILTIN_ID)
+            kept, not_deletion, skipped = self.split_requests(batch.requests, builtin=batch.id == BUILTIN_ID)
             self._set(job, 1, 1.0)
-            if not kept:
+            if not kept and not not_deletion:
                 job.result = {"batch": {"name": batch.name, "rows": len(batch.requests), "ran": 0},
                               "skipped": skipped, "totals": _empty_totals()}
                 raise RuntimeError("None of these requests could be matched to a customer in the data.")
 
             self._set(job, 2, 0.0)
-            run_dataset = replace(dataset, requests=tuple(kept))
+            run_dataset = replace(dataset, requests=tuple(kept))      # the engine's context holds only checkable requests
             pipeline = Pipeline(run_dataset, index=index, use_readings=job.use_readings)
             self._set(job, 2, 1.0)
 
             self._set(job, 3, 0.0)
             outcome = run_requests(run_dataset, pipeline, kept,
                                    on_progress=lambda done, total: self._set(job, 3, done / total))
+            for request, why in not_deletion:                         # no customer needed to say "not a deletion request"
+                outcome.answers[request.case_id] = Answer(request.case_id, "NOT_APPLICABLE", [], None, why)
+                outcome.rows.append((request.case_id, "NOT_APPLICABLE", "[]"))
+            outcome.rows.sort(key=lambda row: case_sort_key(row[0]))
+            answered = kept + [request for request, _ in not_deletion]
 
             job_dir = WEB_DIR / job.id
             job_dir.mkdir(parents=True, exist_ok=True)
             self._set(job, 4, 0.0)
-            samples, checks, report_path = write_report(run_dataset, pipeline, directory=job_dir / "_tmp")
+            report_dataset = replace(dataset, requests=tuple(answered))
+            samples, checks, report_path = write_report(report_dataset, pipeline, directory=job_dir / "_tmp")
             self._set(job, 4, 1.0)
 
             self._set(job, 5, 0.0)
@@ -245,7 +260,7 @@ class AppState:
                 _write_csv(job_dir / "output.csv", outcome.rows)
                 files.append(_file("output.csv", "output.csv", "The answer for every request", job_dir))
             report_path.replace(job_dir / "evaluation_report.md")
-            usage_path = write_usage_report({}, len(kept), directory=job_dir / "_tmp")
+            usage_path = write_usage_report({}, len(answered), directory=job_dir / "_tmp")
             usage_path.replace(job_dir / "usage_report.md")
             (job_dir / "_tmp").rmdir()
             files.append(_file("evaluation_report.md", "Evaluation report", "How accurate the engine is", job_dir))
@@ -257,11 +272,11 @@ class AppState:
             files.append({"name": "all_outputs.zip", "label": "Everything (zip)", "description": "All files above in one download",
                           "size": sum(f["size"] for f in files)})
 
-            requests_by_id = {r.case_id: r for r in kept}
+            requests_by_id = {r.case_id: r for r in answered}
             details = {cid: _detail(requests_by_id[cid], answer) for cid, answer in outcome.answers.items()}
             (job_dir / "cases.json").write_text(json.dumps(details, ensure_ascii=False), encoding="utf-8")
 
-            job.result = _build_result(batch, kept, skipped, outcome, samples, checks, pipeline, problems, files,
+            job.result = _build_result(batch, answered, skipped, outcome, samples, checks, pipeline, problems, files,
                                        details, time.time() - started)
             job.seconds = time.time() - started
             (job_dir / "job.json").write_text(json.dumps({

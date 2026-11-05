@@ -5,7 +5,8 @@ deletion request, and the non-English ones (Portuguese, Korean, Japanese, Spanis
 no English deletion word at all, so a keyword filter for deletion would misclassify them. The
 baseline therefore looks for explicit signs of a *different* request instead: access or a copy of the
 data, export or download, correcting or changing a detail, login help, marketing opt-out only,
-invoices, or an instruction to keep or not delete the account.
+invoices, an instruction to keep or not delete the account, or a message that only tries to give
+orders to the engine ("ignore all previous instructions").
 
 This rule-based check decides on its own; no model is involved yet.
 """
@@ -25,10 +26,20 @@ OTHER_REQUEST = re.compile(
     r"|\b(marketing|promotional|newsletter|sms promotions?)\b.{0,40}\b(only|unsubscribe|stop|opt)\b|\bunsubscribe\b|\bopt[- ]?out\b|\bremove me from (the )?marketing\b"
     r"|\b(invoices?|receipts?)\b", re.I)
 DELETION_WORDS = re.compile(r"\b(delet\w*|erase\w*|erasure|remov\w*|clos\w*|wipe\w*|forget)\b", re.I)
+# Orders aimed at the engine itself ("Ignore all previous instructions", "System override"). Such a message asks
+# for nothing to be deleted, so it is not a deletion request. The patterns are deliberately narrow: they need the
+# wording of an order to a program ("all/any/your previous instructions"), so a customer writing "ignore my
+# previous email" or "ignore my earlier request" is not caught.
+ORDERS_TO_THE_ENGINE = re.compile(
+    r"\b(ignore|disregard|forget|override)\s+(all|any|your|the|these|those)\s+(of\s+)?(the\s+)?"
+    r"(previous|prior|above|earlier|preceding)\s+(instructions?|prompts?|rules|directions)\b"
+    r"|\bsystem\s+(override|prompt|instructions?)\b|\bdeveloper\s+mode\b|\bjailbreak\b", re.I)
 
 
 def baseline_authorizes_deletion(text: str) -> tuple[bool, str]:
     """(authorises deletion, reason). Defaults to True; flips only on an explicit other request."""
+    if ORDERS_TO_THE_ENGINE.search(text):
+        return False, "a message that gives the engine orders, not a request"
     if NEGATED_DELETION.search(text):
         return False, "asks to keep or not delete the account"
     other = OTHER_REQUEST.search(text)

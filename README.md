@@ -64,7 +64,7 @@ The website lives in the `frontend/` folder. It opens a page at `http://127.0.0.
 * **download** `output.csv`, the evaluation report, the usage report, a list of skipped requests, or everything in one zip;
 * switch between light and dark mode (it follows your system by default and remembers your choice).
 
-Uploaded requests must belong to customers who are in `dataset/user_identities.csv`; any request that cannot be matched to a customer is set aside, with the reason, instead of guessed. Results of each run are kept under `runs/web/` and listed under "Recent runs" on the page. These runs never overwrite the official `output.csv` or the reports in `evaluation_test/`.
+A request that is not a deletion request (for example "send me a copy of my data") is answered "not a deletion request" whoever sent it. A deletion request must belong to a customer who is in `dataset/user_identities.csv`; if it cannot be matched to a customer it is set aside, with the reason, instead of guessed. Results of each run are kept under `runs/web/` and listed under "Recent runs" on the page. These runs never overwrite the official `output.csv` or the reports in `evaluation_test/`.
 
 Add `?still=1` to the address to turn all animation off. The page also respects the system "reduce motion" and "reduce transparency" settings.
 

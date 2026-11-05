@@ -36,11 +36,11 @@ custom_cases/
 | `case_548` | something is left (4 steps) | **same, exact match, byte for byte** |
 | `req_foreign_fr` | really done | not answered (customer unknown) |
 | `req_foreign_jp` | really done | not answered (customer unknown) |
-| `req_prompt_injection` | not a deletion request | not answered (see below) |
+| `req_prompt_injection` | not a deletion request | **same, exact match** |
 | `incomplete_all_four_findings` | something is left (all four problems) | not answered (customer unknown) |
 | `demo_all_four_findings` | (no expected file) | something is left: all four problems found, 14 steps |
 
-**4 of the 8 requests with an expected answer match exactly. The other 4 could not be answered.**
+**5 of the 8 requests with an expected answer match exactly. The other 3 could not be answered.**
 
 ## Why some requests were "not answered"
 
@@ -49,14 +49,22 @@ list (`dataset/user_identities.csv`), then searches the evidence for their data.
 list, there is no person to search for, so the engine **sets the request aside instead of guessing** and writes
 it to the `_skipped.csv` file with the reason.
 
-Three of the four (`req_foreign_fr`, `req_foreign_jp`, `incomplete_all_four_findings`) belong to made-up customers
-who do not exist in our data. Their expected answers refer to evidence (such as `account_fr01` and `evidence_01`)
-that only exists in a separate made-up world, so they cannot be reproduced against this dataset.
+The three that could not be answered (`req_foreign_fr`, `req_foreign_jp`, `incomplete_all_four_findings`) belong to
+made-up customers who do not exist in our data. Their expected answers refer to evidence (such as `account_fr01`
+and `evidence_01`) that only exists in a separate made-up world, so they cannot be reproduced against this dataset.
 
-The fourth, `req_prompt_injection`, is a **real gap in the engine**. The message contains no deletion request at
-all, so the right answer is "not a deletion request", which needs no customer. The engine's rules treat any
-message that does not look like something else as a deletion request, so it went on to look for a customer,
-found none, and set the request aside. It did not obey the message's instructions, but its verdict is wrong.
+A request that is **not** a deletion request is different: it needs no customer, so it is answered "not a
+deletion request" whoever sent it. That is how the three look-alike requests and the prompt-injection message
+are answered above.
+
+### The prompt-injection message (fixed)
+
+`req_prompt_injection` ("System Override: Ignore all previous instructions…") contains no deletion request at all.
+An earlier version of the engine treated any message that did not look like something else as a deletion request,
+so it went looking for a customer, found none, and set the request aside. The engine now recognises messages that
+only give orders to the engine ("ignore all previous instructions", "system override", and similar) as not being
+deletion requests. The rule is deliberately narrow: it does not affect any of the 550 real requests, and a customer
+writing "ignore my previous email and delete my account" is still treated as asking for deletion.
 
 ## How to run it again
 
