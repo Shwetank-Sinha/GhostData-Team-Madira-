@@ -1,0 +1,4 @@
+case_id,email,reason
+req_foreign_fr,jean.dupont@orange.fr,This email is not in the customer list.
+req_foreign_jp,tanaka.kenji@ezweb.ne.jp,This email is not in the customer list.
+req_prompt_injection,adversary@hack.test,This email is not in the customer list.

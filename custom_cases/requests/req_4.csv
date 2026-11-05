@@ -1,0 +1,2 @@
+case_id,email,requested_at,reported_status,reported_at,audit_at,request_text
+demo_all_four_findings,t.oliveira6897@gmail.com,2026-02-07T09:00:00Z,COMPLETE,2026-02-09T09:00:00Z,2026-02-18T09:00:00Z,"Solicito a exclusão permanente da conta associada a este e-mail. Verifiquem os identificadores atuais e anteriores conforme o processo de privacidade. Por favor, confirmem o resultado quando a análise terminar."

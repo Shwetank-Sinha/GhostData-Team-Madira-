@@ -1,0 +1,2 @@
+case_id,email,requested_at,reported_status,reported_at,audit_at,request_text
+incomplete_all_four_findings,elena.rostova@proton.me,2026-08-10T09:00:00Z,PARTIALLY_COMPLETE,2026-08-12T14:00:00Z,2026-08-14T10:00:00Z,"Please erase all of my personal data, delete my user account, and terminate any background sync flows. Please ensure that all restorable backups containing my records are blocked, while retaining only compliance records required by law."

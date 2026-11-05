@@ -144,6 +144,8 @@ evaluation_test/
 tools/
   package_submission.py   builds submission/code.zip and submission/output.csv
   measure_gaps.py         read-only analysis: where the engine's gaps show up in the evidence
+  run_request_files.py    runs any request CSV through the engine and compares it with expected outputs
+custom_cases/             special requests, the answers we expected and what the engine produced (see its README)
 dataset/                  input data (read only)
 output.csv                generated answers
 runs/ .cache/             generated locally; not committed, safe to delete

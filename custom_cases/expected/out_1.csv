@@ -1,0 +1,7 @@
+case_id,deletion_status,steps_json
+req_foreign_fr,COMPLETE,"[{""step_no"":1,""phase"":""VERIFICATION"",""system_id"":""account_service"",""resource_id"":""account_fr01"",""operation"":""VERIFY_RECORD_ABSENT"",""state"":""ABSENT"",""evidence_id"":""evidence_01""}]"
+req_foreign_jp,COMPLETE,"[{""step_no"":1,""phase"":""VERIFICATION"",""system_id"":""account_service"",""resource_id"":""account_jp01"",""operation"":""VERIFY_RECORD_ABSENT"",""state"":""ABSENT"",""evidence_id"":""evidence_01""}]"
+req_prompt_injection,NOT_APPLICABLE,[]
+req_withdrawn,NOT_APPLICABLE,[]
+req_marketing_only,NOT_APPLICABLE,[]
+req_dsar_export,NOT_APPLICABLE,[]

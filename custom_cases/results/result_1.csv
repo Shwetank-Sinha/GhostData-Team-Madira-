@@ -1,0 +1,4 @@
+case_id,deletion_status,steps_json
+req_withdrawn,NOT_APPLICABLE,[]
+req_marketing_only,NOT_APPLICABLE,[]
+req_dsar_export,NOT_APPLICABLE,[]
