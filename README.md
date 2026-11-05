@@ -1,201 +1,149 @@
-# GhostData: AI-Powered Deletion-Audit Agent
-**Team Madira** | Automated Data Deletion & Privacy Verification System
+# Ghost Data Deletion Audit
 
----
+A command-line tool that checks whether a person's data was really deleted after they asked a company to delete it. A workflow dashboard saying "Complete" is treated as a claim. The tool rebuilds the true state from the supplied evidence and writes one answer per request.
 
-## 1. Executive Summary & Objective
+For each request it decides:
 
-In modern distributed microservice architectures, executing a user data deletion request ("Right to be Forgotten" under GDPR/CCPA) is notoriously prone to silent failures. As demonstrated by Northstar Shop's \$2.4M incident, primary account deletions often fail because:
-1. Replicas, secondary reporting stores, search caches, and attachments quietly retain unredacted PII.
-2. Automated synchronization, ETL pipelines, and recurring import jobs actively resurrect deleted records.
-3. Unsanitized backup and restore paths present continuous re-exposure risks.
+1. Does the request text actually ask for deletion? Access, correction, export and marketing opt-out do not, so those cases are `NOT_APPLICABLE` with no steps.
+2. Who is the person? It rebuilds the current and past emails, phones, email hashes and user id from the identity snapshot and the change log.
+3. What was the state of each of that person's records at `audit_at`? Only evidence dated at or before that time counts.
+4. What does `deletion_rules.csv` require for each record, and in what safe order should the fixes happen?
 
-The **GhostData Deletion-Audit Agent** is an autonomous, evidence-driven auditing engine. It treats reported workflow status claims (`reported_status == "Complete"`) purely as unverified assertions. The agent inspects concrete system evidence across distributed stores at a specific timestamp (`audit_at`), resolves complete historical user identity graphs, enforces strict policy rules, identifies data leaks or active recreation vectors, and generates a fully compliant, strictly sorted audit report (`output.csv`).
+Each answer is `COMPLETE`, `INCOMPLETE` or `NOT_APPLICABLE`, plus an ordered list of findings, remediation steps and verification checks.
 
----
+## Requirements
 
-## 2. System Architecture
+* Python 3.10 or newer (developed on 3.12). The engine uses only the standard library; there is nothing to `pip install`.
+* `tesseract` (reads the screenshot evidence) and `pdftotext` from poppler (reads the PDF evidence). The run stops with an error if either is missing, because a partial evidence index would give wrong answers.
+  * Windows: `winget install UB-Mannheim.TesseractOCR` and `winget install oschwartz10612.Poppler`, then open a new terminal so PATH refreshes. The Tesseract installer may not add itself to PATH; if `tesseract` is not found, add `C:\Program Files\Tesseract-OCR` to PATH.
+  * macOS: `brew install tesseract poppler`
+  * Debian/Ubuntu: `sudo apt install tesseract-ocr poppler-utils`
+* The `dataset/` folder next to `code/` (already present in this project).
 
-The system pairs a deterministic verification engine (`ghost/`) with an autonomous AI investigator (`ghost/agent.py`):
+## Run
 
-```mermaid
-flowchart TD
-    A["Deletion Requests (deletion_requests.csv)"] --> B["1. Identity Resolution (ghost/identity.py)"]
-    C["Identity Records (user_identities.csv, user_audit_log.csv)"] --> B
-    B --> D["Resolved Identity Graph (UUIDs, Emails, Aliases, Hashes)"]
-    
-    D --> E["2. Multi-Modal Evidence Ingestion (ghost/evidence.py, ghost/activity.py)"]
-    F["Evidence Files (dataset/evidence/: SQLite, JSON, Logs, PDFs)"] --> E
-    G["System Activity Logs (system_activity.csv)"] --> E
-    
-    E --> H["3. Temporal Policy Evaluation Engine (ghost/policy.py, ghost/state.py)"]
-    I["Deletion Rules (deletion_rules.csv at audit_at)"] --> H
-    
-    H --> J{"Evaluation Outcome"}
-    J -->|"No Authorized Request"| K["NOT_APPLICABLE (steps_json: [])"]
-    J -->|"Fully Compliant & Protected"| L["COMPLETE (Verification Only)"]
-    J -->|"Remnants / Leaks / Sync Risks"| M["INCOMPLETE (Findings + Remediation + Future Verification)"]
-    
-    K --> N["Planner & Sequence Formatter (ghost/planner.py)"]
-    L --> N
-    M --> N
-    N --> O["output.csv (518 Cases)"]
-```
-
-### Core Architecture Components
-
-- **Deterministic Engine (`ghost/`):**
-  - **`ghost/intake.py`**: Ingests requests and manifest structures.
-  - **`ghost/identity.py`**: Resolves historical aliases, email variations, and account hashes across `user_identities.csv` and `user_audit_log.csv`.
-  - **`ghost/evidence.py`**: Multi-format evidence parser (SQLite snapshots, JSON dumps, log files, support attachments/PDFs).
-  - **`ghost/activity.py`**: Sync/import and backup risk discovery in `system_activity.csv`.
-  - **`ghost/policy.py` & `ghost/state.py`**: Enforces `deletion_rules.csv` at `audit_at`, applying account tombstone rules (preserving `user_id` while stripping direct PII: name, email, phone, email_hash).
-  - **`ghost/planner.py`**: Formats and strictly orders steps (`FINDING` $\rightarrow$ `REMEDIATION` $\rightarrow$ `VERIFICATION`).
-  - **`ghost/validate.py`**: In-engine compliance gate verifying steps and state transitions.
-
-- **AI Layer (`ghost/agent.py`, `ghost/agent_tools.py`):**
-  - Autonomous reasoning agent equipped with read-only inspection tools for ambiguous evidence, unstructured attachments, and cross-system correlation.
-
-- **Visualizer & Utilities (`viz/`):**
-  - Inspection utilities for auditing case state transitions and evidence graphs.
-
----
-
-## 3. Directory Layout
-
-```
-.
-├── .env.example                  # Environment configuration template
-├── README.md                     # System architecture & operational documentation
-├── log.txt                       # Append-only interaction transcript
-├── validate_submission.py        # Automated submission validation script
-├── main.py                       # Main pipeline entry point
-├── ghost/                        # Core audit engine & AI agent modules
-│   ├── __init__.py
-│   ├── intake.py                 # Request and manifest loading
-│   ├── identity.py               # Historical identity graph resolution
-│   ├── evidence.py               # Multi-modal evidence loader (SQLite, JSON, logs)
-│   ├── activity.py               # Active sync & backup restore risk analysis
-│   ├── policy.py                 # Deletion policy & tombstone evaluator
-│   ├── state.py                  # Temporal state reconstruction at audit_at
-│   ├── planner.py                # Deterministic step sequencing & formatting
-│   ├── validate.py               # Engine-level step & state validation
-│   ├── agent.py                  # AI investigation agent
-│   ├── agent_tools.py            # Inspection tool definitions for LLM
-│   └── vision.py                 # Visual & document evidence parser
-├── evaluation/                   # Evaluation artifacts
-│   ├── evaluation_report.md      # Metrics, custom evaluation test cases, & post-mortem
-│   └── usage_report.md           # Model calls, token accounting, & cost breakdown
-├── tests/                        # Automated unit and integration test suite
-└── output.csv                    # Final generated audit results (518 cases)
-```
-
----
-
-## 4. Setup & Installation
-
-### Prerequisites
-* **Python:** Version 3.10, 3.11, or 3.12
-* **Git:** Configured repository access
-* **OS:** Windows, macOS, or Linux
-
-### 1. Clone & Set Up Virtual Environment
+From the project root:
 
 ```bash
-# Clone the repository
-git clone https://github.com/GhostData-Team-Madira-/GhostData-Team-Madira-.git
-cd GhostData-Team-Madira-
-
-# Create a virtual environment
-python -m venv .venv
-
-# Activate the virtual environment
-# Windows (PowerShell):
-.venv\Scripts\Activate.ps1
-# Linux/macOS:
-source .venv/bin/activate
-
-# Upgrade pip and install dependencies
-pip install --upgrade pip
-pip install -r requirements.txt
+python code/main.py run                 # answers every request, writes ./output.csv AND a new evaluation report
+python code/main.py run --output X.csv  # write the answers somewhere else
+python code/main.py run --no-report     # write output.csv only
+python code/main.py run --no-readings   # ignore the stored screenshot readings (to see their effect)
+python code/main.py identities          # check every request email resolves to a user
+python code/main.py index               # index all evidence files and print a summary
+python evaluation_test/run_evaluation.py   # write only a new report, without producing output.csv
 ```
 
-### 2. Environment Configuration
+Every run creates a new evaluation report and a new usage report named after the date and time, for example
+`evaluation_test/evaluation_report_2026-11-05_08-15-30.md` and `evaluation_test/usage_report_2026-11-05_08-15-30.md`.
+Existing reports are never overwritten.
 
-Copy the example environment configuration:
+To build the submission files (`submission/code.zip` and `submission/output.csv`), run the engine and then:
 
 ```bash
-cp .env.example .env
+python tools/package_submission.py
 ```
 
-Edit `.env` with your appropriate configuration values:
+The zip holds only the README, `code/`, `evaluation_test/run_evaluation.py` and an `evaluation/` folder with the newest evaluation and usage reports. It never holds the dataset, caches or run output, and the script stops if it finds a nested archive or anything that looks like a key.
 
-```ini
-LLM_PROVIDER=gemini
-LLM_API_KEY=your_actual_api_key_here
-LLM_MODEL_NAME=gemini-2.5-pro
-DATASET_DIR=./dataset
-OUTPUT_FILE=./output.csv
+`run` checks every row against the output rules before writing anything. If any row fails, the file is not written. The file is written to a temporary name and renamed at the end, so an interrupted run never leaves a half-written `output.csv`.
+
+A run also writes `runs/audit.jsonl`, one line per case with the resources found and why the case came out the way it did.
+
+## Output format
+
+`output.csv` has the columns `case_id,deletion_status,steps_json`, one row per request in `dataset/deletion_requests.csv`, sorted by case number (`case_9` before `case_10`).
+
+Each step in `steps_json` has `step_no, phase, system_id, resource_id, operation, state, evidence_id`.
+
+| Phase | Operations (state) |
+|---|---|
+| FINDING | `REPORT_REMAINING_RECORD` (PRESENT), `REPORT_EXPOSED_PII` (PRESENT), `REPORT_ACTIVE_DATA_FLOW` (ACTIVE), `REPORT_RESTORE_RISK` (ACTIVE) |
+| REMEDIATION | `DISABLE_DATA_FLOW` (DISABLED), `BLOCK_RESTORE` (BLOCKED), `DELETE_RECORD` (ABSENT), `REDACT_RECORD` (REDACTED), `ANONYMIZE_RECORD` (ANONYMIZED) |
+| VERIFICATION | `VERIFY_RECORD_ABSENT`, `VERIFY_RECORD_PRESENT`, `VERIFY_RECORD_REDACTED`, `VERIFY_RECORD_ANONYMIZED`, `VERIFY_DATA_FLOW_DISABLED`, `VERIFY_RESTORE_BLOCKED` |
+
+* `COMPLETE`: verification steps only, each citing the evidence that proves the state.
+* `INCOMPLETE`: findings (citing evidence), the full remediation plan, then the checks to run afterwards. Remediation and future checks leave `evidence_id` empty. Data flows and restores are stopped before records change.
+* `NOT_APPLICABLE`: `[]`.
+
+## How it works
+
+```
+dataset/ ──► loader ──► identity resolver ─┐
+evidence ──► indexer ───────────────────────┼─► linking ─► state ─► ledger ─► planner ─► row verifier ─► output.csv
+request text ─► rule classifier ────────────┘                                  ▲
+activity log ─► workflow matching (anonymous resources) ───────────────────────┘
 ```
 
-> **Security Warning:** Never commit `.env` or any file containing API keys or private credentials to git.
+* **Loader** (`data.py`): validates headers, ids, enums, timestamps and file paths, and reports every problem at once.
+* **Identity** (`identity.py`): builds a timeline per user and field from the snapshot plus the change log. At `audit_at` it returns the current and historical identifiers. Names never link anything, and identifiers that only took effect after `audit_at` are ignored.
+* **Evidence index** (`evidence.py`): reads SQL snapshots (through an in-memory sqlite with a restrictive authorizer), JSON, several log formats, text, PDFs and screenshots. Absence is proved only by a snapshot that covers the system and does not contain the record. OCR-garbled emails are repaired only when exactly one real email is close enough.
+* **Linking and state** (`linking.py`, `state.py`): a resource belongs to a person when a record carrying one of their identifiers names it. Each record is read into a state for its resource type (present, absent, identifiable, anonymized, redacted, active, disabled, blocked). A record dated after `audit_at` never counts.
+* **Ledger** (`ledger.py`): the latest admissible observation wins; on an exact tie, the reading where data still exists wins. Citations must come from files captured by `audit_at`.
+* **Workflow matching** (`workflow.py`): a few resources, such as a deleted account, carry no identifier anywhere. They are tied to cases through the deletion worker's activity rows, and only when the match is forced in every consistent assignment.
+* **Policy and planner** (`policy.py`, `planner.py`): the data category's required action and the observed state give the finding, remediation and verification, sorted by phase, operation order, `system_id`, `resource_id`.
+* **Row verifier** (`verify.py`): checks keys, numbering, order, allowed operation and state pairs, evidence timing and that a cited file really names the resource.
 
----
+Every decision is made by deterministic code, and the run itself calls no model. The same inputs give a byte-identical `output.csv`, regardless of `PYTHONHASHSEED`.
 
-## 5. Execution Instructions
+### Screenshot readings (the AI part)
 
-### Run the Full Audit Pipeline (All 518 Cases)
+OCR cannot always turn a console screenshot into a state ("Ready", "Continuous sync"). For the few resources where that was the only gap, a model viewed the screenshots and wrote down what each page shows in `code/readings/screenshot_readings.json`, with a quote from the page. `readings.py` checks every reading against the evidence before use (file in the manifest, resource id really on that page, known state) and applies it only for a case audited after the capture time and before any expiry the page states. A reading never links a resource to a person; it only supplies the state of a resource that identifiers already tie to the case.
 
-To execute the complete audit analysis and generate `output.csv`:
+Four readings are used. They change four cases (`case_35`, `case_39`, `case_50`, `case_52`) from COMPLETE to INCOMPLETE, each with a finding, a fix and a check. One screenshot (`backup_9287`) shows no restore status, so nothing was recorded for it, and `export_1260` is not applied to `case_33` because the page says it expired before that case's audit date.
 
-```bash
-python main.py --requests dataset/deletion_requests.csv --evidence dataset/evidence_files.csv --output output.csv
+`gemini.py` and `openai_client.py` (with `llm_common.py`) are ready-made clients with a cache and a usage ledger, for reading screenshots or checking request texts live. They read their keys from `GEMINI_API_KEY` or `OPENAI_API_KEY` and `main.py run` does not call them.
+
+## Project layout
+
+```
+code/
+  main.py                 command line (run, identities, index)
+  deletion_audit/
+    data.py models.py common.py     loading, typed rows, shared helpers
+    identity.py                     who the person is, as of audit_at
+    evidence.py                     evidence indexer
+    linking.py state.py             record -> person, record -> state
+    workflow.py                     links anonymous resources through the activity log
+    ledger.py policy.py planner.py  per-case ledger, rules, ordered steps
+    classifier.py                   does the text ask for deletion?
+    verify.py scoring.py pipeline.py  row checks, sample scoring, orchestration
+    evaluation.py                   scores the samples, checks all requests, writes the report
+    readings.py                     loads and checks the stored screenshot readings
+    llm_common.py gemini.py openai_client.py   optional model clients (cache, usage ledger)
+  readings/screenshot_readings.json   states read from screenshots, with quotes
+evaluation_test/
+  run_evaluation.py       writes only the report (main.py run does it too)
+  evaluation_report_<date>_<time>.md   evaluation report of a run
+  usage_report_<date>_<time>.md        usage report of a run
+tools/
+  package_submission.py   builds submission/code.zip and submission/output.csv
+  measure_gaps.py         read-only analysis: where the engine's gaps show up in the evidence
+dataset/                  input data (read only)
+output.csv                generated answers
+runs/ .cache/             generated locally; not committed, safe to delete
 ```
 
-#### CLI Options
-* `--requests <path>`: Path to `deletion_requests.csv` (default: `dataset/deletion_requests.csv`).
-* `--rules <path>`: Path to `deletion_rules.csv` (default: `dataset/deletion_rules.csv`).
-* `--evidence <path>`: Path to `evidence_files.csv` (default: `dataset/evidence_files.csv`).
-* `--identities <path>`: Path to `user_identities.csv` (default: `dataset/user_identities.csv`).
-* `--audit-log <path>`: Path to `user_audit_log.csv` (default: `dataset/user_audit_log.csv`).
-* `--system-activity <path>`: Path to `system_activity.csv` (default: `dataset/system_activity.csv`).
-* `--output <path>`: Path to output CSV file (default: `output.csv`).
-* `--limit <n>`: Optional flag to process only the first $N$ cases (useful for dry runs and debugging).
+## Results
 
----
+Measured by the evaluation step of `python code/main.py run`; see the newest `evaluation_test/evaluation_report_*.md` for the full tables.
 
-## 6. Verification & Quality Assurance
+| Check | Result |
+|---|---|
+| Public samples (32), status accuracy | 32/32 |
+| Samples with every step exactly right | 20/32 |
+| Step precision / recall / F1 | 1.0 / 0.9275 / 0.9624 |
+| All 518 requests | 160 COMPLETE, 348 INCOMPLETE, 10 NOT_APPLICABLE, 2983 steps |
+| Contract problems in the 518 rows | 0 |
 
-Before packaging deliverables, validate the generated `output.csv` against all contest specifications using the validator script:
+The 32 public samples are the only cases with reference answers, so accuracy on the 518 requests is not measured and may be lower.
 
-```bash
-python validate_submission.py --file output.csv
-```
+## Known limits
 
-The validation suite verifies:
-1. **Header & Structure:** Exact column header `case_id,deletion_status,steps_json`.
-2. **Row Count:** Exactly 518 data rows, strictly ordered by `case_id` ascending.
-3. **Status Integrity:** Only valid statuses (`COMPLETE`, `INCOMPLETE`, `NOT_APPLICABLE`).
-4. **`NOT_APPLICABLE` Handling:** Strict verification that `steps_json == "[]"`.
-5. **Step Sequence & Numbering:** `step_no` is strictly 1-based and consecutively increasing without gaps.
-6. **Phase & Operation Order:** Strict adherence to Phase order (`FINDING` $\rightarrow$ `REMEDIATION` $\rightarrow$ `VERIFICATION`) and intra-phase operation ordering.
-7. **Tie-Breaking Determinism:** Verifies ascending sorting on `system_id` then `resource_id`.
-8. **Evidence ID Integrity:** Ensures findings and verifications cite valid IDs, while proposed remediations/future verifications pass `""`.
-
----
-
-## 7. Packaging & Submission
-
-To build the final submission archive `code.zip`:
-
-```bash
-# Package files excluding dataset, virtual environments, caches, and local secrets
-zip -r code.zip ghost/ evaluation/ tests/ viz/ README.md main.py validate_submission.py requirements.txt .env.example -x "*.pyc" -x "*__pycache__*" -x "*.venv*"
-```
-
-Verify that `code.zip` contains:
-* Runnable source code (`ghost/`, `main.py`, `validate_submission.py`)
-* Comprehensive `README.md` and `.env.example`
-* Complete `evaluation/evaluation_report.md` (with metrics and 3 custom test cases)
-* Complete `evaluation/usage_report.md` (with token usage and cost analysis)
-* **Strictly excludes** `dataset/`, virtual environments, cache files, and API keys.
+* The `condition` column of `deletion_rules.csv` is not evaluated; the required action per data category is used.
+* A resource that evidence does not tie to a case is left out instead of guessed. All 14 missing sample steps are of this kind (verification steps for anonymized analytics profiles, deleted accounts and audit records).
+* 26 resources linked to a case are left out of its answer because their state is unreadable at the audit time (most are evidenced only after `audit_at`) or no allowed operation applies. They are listed in `runs/audit.jsonl` under `dropped` and `unplanned`.
+* Two cases (`case_61`, `case_63`) have no identifiable resource in admissible evidence and are answered `COMPLETE` with no steps.
+* The workflow matching infers links from timing; it is a statistical inference, not proof.
+* An analytics record whose identifier columns are empty but whose free-text note holds an email is treated as anonymized.
+* Resource ids are ordered as plain text (`account_1000` before `account_999`).

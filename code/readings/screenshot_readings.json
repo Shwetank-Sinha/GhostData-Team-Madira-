@@ -1,0 +1,43 @@
+{
+  "description": "States read by eye from console screenshots whose text OCR could not turn into a state. Each reading gives the state a screenshot shows for a resource that the engine had already tied to a case through identifiers. A reading never links a resource to a case; it only supplies the state.",
+  "read_by": "Claude Code (claude-sonnet-5-5), viewing the screenshot images directly",
+  "read_on": "2026-11-05",
+  "readings": [
+    {
+      "file_id": "evidence_23",
+      "resource_id": "export_1260",
+      "state": "PRESENT",
+      "valid_until": "2026-06-25T06:42:00Z",
+      "quote": "export_1260 | customer_export_1260.zip | ingrid.dahl@outlook.com | Status Ready | created 18 Jun 2026 06:42 UTC | expires 25 Jun 2026 06:42 UTC | download count 0",
+      "note": "A ready export package. The page says it expires on 25 Jun 2026, so the reading is not used for a case audited after that."
+    },
+    {
+      "file_id": "evidence_09",
+      "resource_id": "search_428",
+      "state": "PRESENT",
+      "quote": "Results (2) | search_428 | Gabriel Silva | g.silva76@gmail.com | user_13 | indexed_at 2026-09-01T05:58:21Z",
+      "note": "A live hit in customer_directory_v3 returned for the email query. search_1874 on the same page is a different person (g.silva76.jr@gmail.com)."
+    },
+    {
+      "file_id": "evidence_14",
+      "resource_id": "data_flow_1121",
+      "state": "ACTIVE",
+      "quote": "data_flow_1121 | customer_analytics_warehouse | jain.aditi@gmail.com | Continuous | 1,284 events/hour | Status Healthy | Sync mode Continuous sync | 124 events delivered 07:59:42",
+      "note": "The connector is delivering events for this person to the analytics warehouse."
+    },
+    {
+      "file_id": "evidence_19",
+      "resource_id": "analytics_7438",
+      "state": "IDENTIFIABLE",
+      "quote": "Omar Darwish | user_20 . analytics_7438 . darwish.omar@icloud.com",
+      "note": "The profile still shows the person's name and email."
+    }
+  ],
+  "not_determinable": [
+    {
+      "file_id": "evidence_32",
+      "resource_id": "backup_9287",
+      "reason": "The page lists the archive (account areed1433@gmail.com, checksum Verified, retention end 26 Jul 2026) but shows no restore allowed or blocked status, so no state is recorded."
+    }
+  ]
+}

@@ -1,50 +1,20 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Caches and logs
-*.log
-.cache/
 .pytest_cache/
-cache/
+.venv/
+venv/
 
-# Runtime / Output data
-output.csv
-*.sqlite
-*.db
+# Secrets: API keys are read from environment variables and never stored in the project
+.env
+.env.*
 
-# macOS files
-.DS_Store
+# Generated on every run
+runs/
+.cache/
+llm_cache/
 
+# Local submission bundle and older test reports (kept on disk, not in the repo)
+submission/
+evaluation_test/archive/
+*.partial
